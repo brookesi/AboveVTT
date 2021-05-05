@@ -1,34 +1,63 @@
 const POLYGON_CLOSE_DISTANCE = 15;
 
+// Object which will hold some different waypoint manager instances
+var WPM = undefined;
+
 /**
  * Class to manage measure waypoints
  */
 class WaypointManager {
 
 	// Members
-	static canvas;
-	static ctx;
-	static numWaypoints = 0;
-	static coords = [];
-	static currentWaypointIndex = 0;
-	static mouseDownCoords = { mousex: undefined, mousey: undefined };
-	static timeout = undefined;
+	static canvas = null;
+	static ctx = null;
+	static remoteCoords = new Map();
+	static remoteTimeoutId = undefined;
 
+	constructor() {
+
+		this.numWaypoints = 0;
+		this.coords = [];
+		this.currentWaypointIndex = 0;
+		this.mouseDownCoords = { mousex: undefined, mousey: undefined };
+		this.timeout = undefined;
+	}
 	// Set canvas and further set context
 	static setCanvas(canvas) {
 
-		this.canvas = canvas;
-		this.ctx = canvas.getContext("2d");
+		console.log("WPM: Canvas set: " + canvas);
+		WaypointManager.canvas = canvas;
+		WaypointManager.ctx = canvas.getContext("2d");
 	}
 
 	// Are we in the middle of measuring?
-	static isMeasuring() {
+	isMeasuring() {
 
 		return this.numWaypoints != 0;
 	}
 
+	roundRect(ctx, x, y, width, height, radius) {
+
+		if (typeof radius === "undefined") {
+		  radius = 5;
+		}
+		ctx.beginPath();
+		ctx.moveTo(x + radius, y);
+		ctx.lineTo(x + width - radius, y);
+		ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+		ctx.lineTo(x + width, y + height - radius);
+		ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+		ctx.lineTo(x + radius, y + height);
+		ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+		ctx.lineTo(x, y + radius);
+		ctx.quadraticCurveTo(x, y, x + radius, y);
+		ctx.closePath();
+		ctx.stroke();   
+		ctx.fill();  
+	}
+
 	// Store a waypoint in the array
-	static storeWaypoint(index, startX, startY, endX, endY) {
+	storeWaypoint(index, startX, startY, endX, endY) {
 
 		// Check if we have this waypoint in our array, if not then increment how many waypoints we have
 		if (typeof this.coords[index] === 'undefined') {
@@ -43,10 +72,11 @@ class WaypointManager {
 			// If this is NOT the first, then we stitch the segments together by setting the start of this one to the end of the previous one
 			this.coords[index] = { startX: this.coords[index - 1].endX, startY: this.coords[index - 1].endY, endX: endX, endY: endY, distance: 0 };
 		}
+
 	}
 
 	// Increment the current index into the array of waypoints, and draw a small indicator
-	static checkNewWaypoint(mousex, mousey) {
+	checkNewWaypoint(mousex, mousey) {
 
 		if (this.mouseDownCoords.mousex == mousex && this.mouseDownCoords.mousey == mousey) {
 
@@ -55,26 +85,29 @@ class WaypointManager {
 
 			// Draw an indicator for cosmetic niceness
 			var snapCoords = this.getSnapPointCoords(mousex, mousey);
-			this.ctx.beginPath();
-			this.ctx.arc(snapCoords.x, snapCoords.y, window.CURRENT_SCENE_DATA.hpps / 4, 0, 2 * Math.PI, false);
-			this.ctx.lineWidth = 5;
-			this.ctx.strokeStyle = "black";
-			this.ctx.stroke();
-			this.ctx.lineWidth = 3;
-			this.ctx.strokeStyle = "white";
-			this.ctx.stroke();
+			var ctx = WaypointManager.ctx;
+			ctx.beginPath();
+			ctx.arc(snapCoords.x, snapCoords.y, window.CURRENT_SCENE_DATA.hpps / 4, 0, 2 * Math.PI, false);
+			ctx.lineWidth = 5;
+			ctx.strokeStyle = "black";
+			ctx.stroke();
+			ctx.lineWidth = 3;
+			ctx.strokeStyle = "white";
+			ctx.stroke();
 		}
 	}
 
 	// Track mouse moving
-	static registerMouseMove(mousex, mousey) {
+	registerMouseMove(mousex, mousey) {
 
 		this.mouseDownCoords.mousex = mousex;
 		this.mouseDownCoords.mousey = mousey;
 	}
 
-	// On mouse up, clear out the waypoints
-	static clearWaypoints() {
+	// On mouse up, clear out the waypoints, and propagate
+	clearWaypoints(isMeasureTool) {
+
+		window.MB.sendMessage('custom/myVTT/waypoint', { coords: this.coords, isMeasureTool: isMeasureTool });
 
 		this.numWaypoints = 0;
 		this.coords = [];
@@ -85,7 +118,7 @@ class WaypointManager {
 	}
 
 	// Helper function to convert mouse coordinates to 'snap' or 'centre of current grid cell' coordinates
-	static getSnapPointCoords(x, y) {
+	getSnapPointCoords(x, y) {
 
 		var gridSize = window.CURRENT_SCENE_DATA.hpps;
 		var currGridX = Math.floor(x / gridSize);
@@ -98,28 +131,30 @@ class WaypointManager {
 
 	// Draw the waypoints, note that we sum up the cumulative distance, midlineLabels is true for token drag
 	// as otherwise the token sits on the measurement label
-	static draw(midlineLabels) {
+	draw(midlineLabels) {
 
-		
 		var cumulativeDistance = 0
+		WaypointManager.ctx.beginPath();
 		for (var i = 0; i < this.coords.length; i++) {
 			// We do the beginPath here because otherwise the lines on subsequent waypoints get
 			// drawn over the labels...
-			this.ctx.beginPath();
+			
 			this.drawWaypointSegment(this.coords[i], cumulativeDistance, midlineLabels);
 			cumulativeDistance += this.coords[i].distance;
 		}
 	}
 
 	// Draw a waypoint segment with all the lines and labels etc.
-	static drawWaypointSegment(coord, cumulativeDistance, midlineLabels) {
+	drawWaypointSegment(coord, cumulativeDistance, midlineLabels) {
+
+		var ctx = WaypointManager.ctx;
 
 		// Snap to centre of current grid square
 		var gridSize = window.CURRENT_SCENE_DATA.hpps;
 		var snapCoords = this.getSnapPointCoords(coord.startX, coord.startY);
 		var snapPointXStart = snapCoords.x;
 		var snapPointYStart = snapCoords.y;
-		this.ctx.moveTo(snapPointXStart, snapPointYStart);
+		ctx.moveTo(snapPointXStart, snapPointYStart);
 
 		snapCoords = this.getSnapPointCoords(coord.endX, coord.endY);
 		var snapPointXEnd = snapCoords.x;
@@ -141,9 +176,9 @@ class WaypointManager {
 		var slopeModifier = 0;
 
 		// Setup text metrics
-		this.ctx.font = "30px Arial";
+		ctx.font = "30px Arial";
 		var text = "" + (distance + cumulativeDistance) + unitSymbol;
-		var textMetrics = this.ctx.measureText(text);
+		var textMetrics = ctx.measureText(text);
 
 		// Calculate our positions and dmensions based on if we are measuring (midlineLabels == false) or 
 		// token dragging (midlineLabels == true)
@@ -178,7 +213,7 @@ class WaypointManager {
 			}
 
 			// Need to further tweak the modifier if we are on the right hand side of the map
-			if (snapPointXEnd + gridSize > this.canvas.width) {
+			if (snapPointXEnd + gridSize > WaypointManager.canvas.width) {
 				slopeModifier = -(heightOffset * 1.5);
 			}
 
@@ -198,31 +233,92 @@ class WaypointManager {
 		}
 
 		// Draw our 'contrast line'
-		this.ctx.strokeStyle = "black";
-		this.ctx.lineWidth = 7;
-		this.ctx.lineTo(snapPointXEnd, snapPointYEnd);
-		this.ctx.stroke();
+		ctx.strokeStyle = "rgba(0, 0, 0)";
+		ctx.lineWidth = 5;
+		ctx.lineTo(snapPointXEnd, snapPointYEnd);
+		ctx.stroke();
 
 		// Draw our centre line
-		this.ctx.strokeStyle = "white";
-		this.ctx.lineWidth = 5;
-		this.ctx.lineTo(snapPointXEnd, snapPointYEnd);
-		this.ctx.stroke();
+		ctx.strokeStyle = "rgba(204, 255, 255)";
+		ctx.lineWidth = 3;
+		ctx.lineTo(snapPointXEnd, snapPointYEnd);
+		ctx.stroke();
 
 		// Draw a 'backing rectangle', slightly larger than our text rectangle
-		this.ctx.fillStyle = "black";
-		this.ctx.fillRect(contrastRect.x, contrastRect.y, contrastRect.width, contrastRect.height);
+		//ctx.fillStyle = "black";
+		//ctx.fillRect(contrastRect.x, contrastRect.y, contrastRect.width, contrastRect.height);
 
 		// Draw our text rectangle
-		this.ctx.fillStyle = "white";
-		this.ctx.fillRect(textRect.x, textRect.y, textRect.width, textRect.height);
+		//ctx.fillStyle = "white";
+		//ctx.fillRect(textRect.x, textRect.y, textRect.width, textRect.height);
+		ctx.strokeStyle = "black";
+		ctx.fillStyle = "rgba(204, 255, 255, 0.5)";
+		this.roundRect(ctx, contrastRect.x, contrastRect.y, contrastRect.width, contrastRect.height, 10);
 
 		// Finally draw our text
-		this.ctx.fillStyle = "black";
-		this.ctx.textBaseline = 'top';
-		this.ctx.fillText(text, textX, textY);
+		ctx.textAlign="center"; 
+		//ctx.textBaseline = "middle";
+		ctx.fillStyle = "black";
+		ctx.textBaseline = 'top';
+		ctx.fillText(text, textX, textY);
 	}
-};
+
+	// A token has moved remotely, we draw its waypoint path
+	remoteDrawWaypoint(data) {
+
+		// We have received a message over the network, we extract the coords and draw
+		// Note that the token place() method calls into remoteManageWaypoint
+		//console.log("Received remote waypoint");
+		//console.log(data);
+		this.coords = data.coords;
+		this.draw(false);
+
+		if(data.isMeasureTool) {
+			// Remote user is using the measure tool, we draw it, but need to clear it
+			// as token dragging gets cleared by the animation
+			WaypointManager.clearRemoteWaypoints();
+		}
+	}
+
+	// Clear the canvas UNLESS another move is in flight, either local OR remote
+	static clearRemoteWaypoints() {
+
+		// Are we drawing locally?
+		if(WPM.Local.isMeasuring()) {
+			// Do nothing, the canvas will clear automatically
+		}
+		else {
+			// Do we have a timer in flight from a current remote drawing
+			if(this.remoteTimeoutId != undefined) {
+				//console.log("Clearing current timeout: " + this.remoteTimeoutId);
+				clearTimeout(this.remoteTimeoutId)
+			}
+			// Set our new timer, this could lead to waypoint lines hanging around longer than necessary
+			this.remoteTimeoutId = setTimeout(function() {
+				//console.log("Redrawing canvas for timeout: " + WaypointManager.remoteTimeoutId); 
+				redraw_canvas(); 
+			}, 2000);
+			//console.log("Setting timeout: " + this.remoteTimeoutId);
+		}		
+	}
+}
+
+// Rather hacky way to get the canvas upfront as need to set into the WaypointManager
+function setCanvasTimer() {
+
+	var canvas = document.getElementById("fog_overlay");
+
+	if(canvas == null) {
+		setTimeout(setCanvasTimer, 1000);
+	}
+	else {
+		WaypointManager.setCanvas(canvas);
+	}
+}
+setCanvasTimer();
+
+// Create a local WPM for user and a remote one to receive network notifications
+WPM = { Local : new WaypointManager(), Remote : new WaypointManager() };
 
 function check_token_visibility() {
 	if (window.DM || $("#fog_overlay").is(":hidden"))
@@ -779,12 +875,10 @@ function drawing_mousemove(e) {
 		}
 		else if (e.data.shape == "measure") {
 			ctx.save();
-			// ctx.beginPath();
 
-			WaypointManager.setCanvas(canvas);
-			WaypointManager.registerMouseMove(mousex, mousey);
-			WaypointManager.storeWaypoint(WaypointManager.currentWaypointIndex, window.BEGIN_MOUSEX, window.BEGIN_MOUSEY, mousex, mousey);
-			WaypointManager.draw(false);
+			WPM.Local.registerMouseMove(mousex, mousey);
+			WPM.Local.storeWaypoint(WPM.Local.currentWaypointIndex, window.BEGIN_MOUSEX, window.BEGIN_MOUSEY, mousex, mousey);
+			WPM.Local.draw(false);
 
 			ctx.fillStyle = '#f50';
 
@@ -823,7 +917,7 @@ function drawing_mouseup(e) {
 
 	// Return early from this function if we are measuring and have hit the right mouse button
 	if (e.data.shape == "measure" && e.button == 2) {
-		WaypointManager.checkNewWaypoint(mousex, mousey);
+		WPM.Local.checkNewWaypoint(mousex, mousey);
 		//console.log("Measure right click");
 		return;
 	}
@@ -936,11 +1030,11 @@ function drawing_mouseup(e) {
 		setTimeout(function () {
 			// We do not clear if we are still measuring, added this as it somehow appeared multiple
 			// timers could be set, may be a race condition or something still here...
-			if (!WaypointManager.isMeasuring()) {
+			if (!WPM.Local.isMeasuring()) {
 				redraw_canvas();
 			}
 		}, 1500);
-		WaypointManager.clearWaypoints();
+		WPM.Local.clearWaypoints(true);
 	}
 	if (e.data.shape == "align") {
 		window.ScenesHandler.scene.grid_subdivided = "0";

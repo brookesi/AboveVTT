@@ -379,7 +379,6 @@ class Token {
 		}
 	}
 
-
 	place() {
 		console.log("cerco id" + this.options.id);
 		var selector = "div[data-id='" + this.options.id + "']";
@@ -400,7 +399,10 @@ class Token {
 					{
 						left: this.options.left,
 						top: this.options.top,
-					}, { duration: 1500, queue: false });
+					}, { duration: 1500, queue: false, complete: function() { 
+						console.log($(this).attr("data-id")); 
+						WaypointManager.clearRemoteWaypoints();
+					}});
 
 
 			// CONCENTRATION REMINDER
@@ -634,7 +636,7 @@ class Token {
 
 						// We may have reached here because the user has right-clicked, which stops the drag operation,
 						redraw_canvas();
-						WaypointManager.clearWaypoints();
+						WPM.Local.clearWaypoints(false);
 						$(event.target).off("mouseup", dragging_right_click_mouseup);
 						$(event.target).off("mousedown", dragging_right_click_mousedown);
 						$(event.target).off("contextmenu", return_false);
@@ -674,7 +676,6 @@ class Token {
 
 					window.BEGIN_MOUSEX = (event.pageX - 200) * (1.0 / window.ZOOM);
 					window.BEGIN_MOUSEY = (event.pageY - 200) * (1.0 / window.ZOOM);
-					WaypointManager.setCanvas(document.getElementById("fog_overlay"));
 
 					// Detect the right-click mouseup/down in our own custom function
 					$(event.target).on("mouseup", dragging_right_click_mouseup);
@@ -734,11 +735,11 @@ class Token {
 					WaypointManager.ctx.save();
 					WaypointManager.ctx.beginPath();
 
-					WaypointManager.registerMouseMove(mousex, mousey);
-					WaypointManager.storeWaypoint(WaypointManager.currentWaypointIndex, window.BEGIN_MOUSEX, window.BEGIN_MOUSEY, mousex, mousey);
-					WaypointManager.draw(true);
+					WPM.Local.registerMouseMove(mousex, mousey);
+					WPM.Local.storeWaypoint(WPM.Local.currentWaypointIndex, window.BEGIN_MOUSEX, window.BEGIN_MOUSEY, mousex, mousey);
+					WPM.Local.draw(true);
 
-					WaypointManager.ctx.fillStyle = '#f50';
+					WaypointManager.fillStyle = '#f50';
 					WaypointManager.ctx.restore();
 				}
 			});
@@ -776,7 +777,7 @@ function dragging_right_click_mouseup(event) {
 		event.stopPropagation();
 		var mousex = (event.pageX - 200) * (1.0 / window.ZOOM);
 		var mousey = (event.pageY - 200) * (1.0 / window.ZOOM);
-		WaypointManager.checkNewWaypoint(mousex, mousey);
+		WPM.Local.checkNewWaypoint(mousex, mousey);
 	}
 }
 

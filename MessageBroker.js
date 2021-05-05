@@ -142,6 +142,10 @@ class MessageBroker {
 					ct_persist();
 				}
 			}
+
+			if (msg.eventType == "custom/myVTT/waypoint") {
+				WPM.Remote.remoteDrawWaypoint(msg.data);
+			}
 		};
 	}
 
