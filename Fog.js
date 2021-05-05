@@ -278,29 +278,29 @@ class WaypointManager {
 		}
 
 		// Draw our 'contrast line'
-		this.ctx.strokeStyle = "black";
-		this.ctx.lineWidth = 5;
-		this.ctx.lineTo(snapPointXEnd, snapPointYEnd);
-		this.ctx.stroke();
+		ctx.strokeStyle = "black";
+		ctx.lineWidth = 5;
+		ctx.lineTo(snapPointXEnd, snapPointYEnd);
+		ctx.stroke();
 
 		// Draw our centre line
-		this.ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
-		this.ctx.lineWidth = 3;
-		this.ctx.lineTo(snapPointXEnd, snapPointYEnd);
-		this.ctx.stroke();
+		ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
+		ctx.lineWidth = 3;
+		ctx.lineTo(snapPointXEnd, snapPointYEnd);
+		ctx.stroke();
 
-		this.ctx.lineWidth = 3;
-		this.ctx.strokeStyle = "black";
-		this.ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
-		roundRect(this.ctx, textRect.x, textRect.y, textRect.width, textRect.height, 10, true);
+		ctx.lineWidth = 3;
+		ctx.strokeStyle = "black";
+		ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
+		roundRect(ctx, textRect.x, textRect.y, textRect.width, textRect.height, 10, true);
 
 		// Finally draw our text
-		this.ctx.fillStyle = "black";
-		this.ctx.textBaseline = 'top';
-		this.ctx.fillText(text, textX, textY);
+		ctx.fillStyle = "black";
+		ctx.textBaseline = 'top';
+		ctx.fillText(text, textX, textY);
 
-		this.drawBobble(snapPointXStart, snapPointYStart);
-		this.drawBobble(snapPointXEnd, snapPointYEnd, 3);
+		WaypointManager.drawBobble(snapPointXStart, snapPointYStart);
+		WaypointManager.drawBobble(snapPointXEnd, snapPointYEnd, 3);
 	}
 
 	// A token has moved remotely, we draw its waypoint path
